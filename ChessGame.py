@@ -197,5 +197,17 @@ def run_game():
             print(f"Valid moves are: {chess_game.get_moves('w')}")
 
 
-
-run_game()
+# Only run the game if this file is executed directly
+if __name__ == "__main__":
+    # Launch the GUI version instead of the console version
+    import os
+    import sys
+    import subprocess
+    print("Launching Chess GUI...")
+    try:
+        # Use the start_chess.py script which has proper error handling
+        subprocess.run([sys.executable, "start_chess.py"])
+    except Exception as e:
+        print(f"Error launching GUI: {e}")
+        print("Falling back to text-based version...")
+        run_game()

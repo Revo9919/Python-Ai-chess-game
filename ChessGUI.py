@@ -53,31 +53,114 @@ except:
 # Dictionary to store piece images
 piece_images = {}
 
+def create_piece_image(piece_code, size=PIECE_SIZE):
+    """Create a simple image for a chess piece with its symbol"""
+    piece_symbols = {
+        'K': '♔', 'Q': '♕', 'R': '♖', 'B': '♗', 'N': '♘', 'P': '♙',
+        'k': '♚', 'q': '♛', 'r': '♜', 'b': '♝', 'n': '♞', 'p': '♟'
+    }
+    piece_letters = {
+        'K': 'K', 'Q': 'Q', 'R': 'R', 'B': 'B', 'N': 'N', 'P': 'P',
+        'k': 'k', 'q': 'q', 'r': 'r', 'b': 'b', 'n': 'n', 'p': 'p'
+    }
+
+    is_white_piece = piece_code.isupper()
+    piece_color = WHITE if is_white_piece else BLACK
+    bg_color = (210, 180, 140)  # Tan background
+
+    surf = pygame.Surface((size, size), pygame.SRCALPHA)
+    surf.fill((0, 0, 0, 0))  # Transparent background
+
+    circle_radius = size // 2 - 2
+    pygame.draw.circle(surf, bg_color, (size // 2, size // 2), circle_radius)
+    pygame.draw.circle(surf, BLACK if is_white_piece else WHITE, (size // 2, size // 2), circle_radius, 1)
+
+    symbol_rendered_successfully = False
+    symbol = piece_symbols.get(piece_code, '?')
+    font_size_symbol = int(size * 0.7)
+    # Added 'DejaVu Sans', 'FreeSerif' which have good Unicode coverage
+    font_candidates = ['Arial Unicode MS', 'Segoe UI Symbol', 'DejaVu Sans', 'FreeSerif', 'Arial', 'Times New Roman']
+    
+    print(f"Attempting to render Unicode symbol for {piece_code} ('{symbol}')")
+    for font_name in font_candidates:
+        try:
+            font = pygame.font.SysFont(font_name, font_size_symbol, bold=True)
+            text_surface = font.render(symbol, True, piece_color)
+            # Heuristic: width should be somewhat substantial, not tiny (like a missing char box)
+            # and not wider than the available space.
+            if size * 0.1 < text_surface.get_width() < size * 0.95:
+                text_rect = text_surface.get_rect(center=(size // 2, size // 2))
+                surf.blit(text_surface, text_rect)
+                symbol_rendered_successfully = True
+                print(f"  Successfully rendered Unicode symbol '{symbol}' for {piece_code} using font {font_name}")
+                break 
+        except Exception as e:
+            print(f"  Font {font_name} failed for Unicode symbol '{symbol}' for {piece_code}: {e}")
+            continue
+
+    if symbol_rendered_successfully:
+        return surf
+
+    print(f"Falling back to letter for {piece_code}")
+    letter = piece_letters.get(piece_code, '?')
+    try:
+        letter_font_size = int(size * 0.75) 
+        letter_font = pygame.font.SysFont('Arial', letter_font_size, bold=True) # Arial is very common
+        text_surface = letter_font.render(letter, True, piece_color)
+        text_rect = text_surface.get_rect(center=(size // 2, size // 2))
+        surf.blit(text_surface, text_rect)
+        print(f"  Successfully rendered letter '{letter}' for {piece_code}")
+        return surf
+    except Exception as e:
+        print(f"  Error rendering letter '{letter}' for {piece_code}: {e}")
+
+    print(f"Falling back to piece_code character for {piece_code}")
+    try:
+        code_font_size = int(size * 0.6)
+        code_font = pygame.font.SysFont('Arial', code_font_size, bold=True)
+        text_surface = code_font.render(piece_code, True, piece_color)
+        text_rect = text_surface.get_rect(center=(size // 2, size // 2))
+        surf.blit(text_surface, text_rect)
+        print(f"  Successfully rendered piece_code char '{piece_code}'")
+    except Exception as e:
+        print(f"  Error rendering piece_code char '{piece_code}': {e}")
+
+    return surf
+
 def load_piece_images():
-    """Load chess piece images from 'pieces' directory"""
+    """Load chess piece images from 'pieces' directory or create them if missing"""
     pieces = ['P', 'N', 'B', 'R', 'Q', 'K', 'p', 'n', 'b', 'r', 'q', 'k']
     
     if not os.path.exists("pieces"):
-        print("Creating pieces directory and downloading images...")
+        print("Creating pieces directory...")
         os.makedirs("pieces", exist_ok=True)
-        # Note: In a real application, you would download images here
-        # For this implementation, please manually add piece images to the 'pieces' folder
-        print("Please add chess piece images to the 'pieces' folder.")
-        return False
     
-    try:
-        for piece in pieces:
-            img_path = os.path.join("pieces", f"{piece}.png")
+    missing_pieces = False
+    
+    for piece in pieces:
+        img_path = os.path.join("pieces", f"{piece}.png")
+        try:
             if os.path.exists(img_path):
+                # Load existing image
                 img = pygame.image.load(img_path)
                 piece_images[piece] = pygame.transform.scale(img, (PIECE_SIZE, PIECE_SIZE))
             else:
-                print(f"Missing piece image: {img_path}")
-                return False
-        return True
-    except Exception as e:
-        print(f"Error loading images: {e}")
-        return False
+                # Create image if it doesn't exist
+                print(f"Creating image for piece: {piece}")
+                img = create_piece_image(piece)
+                piece_images[piece] = img
+                # Save for future use
+                pygame.image.save(img, img_path)
+                missing_pieces = True
+        except Exception as e:
+            print(f"Error with piece {piece}: {e}")
+            # Create a fallback image
+            piece_images[piece] = create_piece_image(piece)
+    
+    if missing_pieces:
+        print("Some piece images were automatically created. For better visuals, you may want to replace them with proper chess piece images.")
+    
+    return True
 
 class Button:
     def __init__(self, x, y, width, height, text, action=None):
@@ -456,18 +539,16 @@ class ChessGUI:
                 x = self.board_offset_x + draw_col * SQUARE_SIZE
                 y = self.board_offset_y + draw_row * SQUARE_SIZE
                 pygame.draw.rect(screen, color, (x, y, SQUARE_SIZE, SQUARE_SIZE))
-                
-                # Draw coordinate labels
+                  # Draw coordinate labels
                 if draw_col == 0:  # Left edge - row numbers
                     label = str(8 - draw_row)
                     text = font.render(label, True, BLACK if color == LIGHT_SQUARE else WHITE)
                     screen.blit(text, (x + 2, y + 2))
-                    
                 if draw_row == 7:  # Bottom edge - column letters
                     label = chr(97 + draw_col)
                     text = font.render(label, True, BLACK if color == LIGHT_SQUARE else WHITE)
                     screen.blit(text, (x + SQUARE_SIZE - 12, y + SQUARE_SIZE - 18))
-    
+                    
     def draw_pieces(self):
         """Draw the chess pieces"""
         for row in range(8):
@@ -480,15 +561,12 @@ class ChessGUI:
                         
                     x = self.board_offset_x + draw_col * SQUARE_SIZE + (SQUARE_SIZE - PIECE_SIZE) // 2
                     y = self.board_offset_y + draw_row * SQUARE_SIZE + (SQUARE_SIZE - PIECE_SIZE) // 2
+                      # If the piece is not in our image cache, create it on the fly
+                    if piece not in piece_images:
+                        piece_images[piece] = create_piece_image(piece)
                     
-                    # Draw from loaded images if available
-                    if piece in piece_images:
-                        screen.blit(piece_images[piece], (x, y))
-                    else:
-                        # Fallback to text representation
-                        color = WHITE if piece.isupper() else BLACK
-                        piece_text = large_font.render(self.get_unicode_piece(piece), True, color)
-                        screen.blit(piece_text, (x + SQUARE_SIZE//4, y + SQUARE_SIZE//6))
+                    # Draw the piece
+                    screen.blit(piece_images[piece], (x, y))
     
     def get_unicode_piece(self, piece):
         """Convert piece character to Unicode chess symbol"""
@@ -496,7 +574,7 @@ class ChessGUI:
             'K': '♔', 'Q': '♕', 'R': '♖', 'B': '♗', 'N': '♘', 'P': '♙',
             'k': '♚', 'q': '♛', 'r': '♜', 'b': '♝', 'n': '♞', 'p': '♟'
         }
-        return symbols.get(piece, piece)
+        return symbols.get(piece, '?')
     
     def draw_highlights(self):
         """Draw highlights for selected piece, valid moves and last move"""
@@ -759,11 +837,78 @@ def main():
     os.makedirs("sounds", exist_ok=True)
     os.makedirs("pieces", exist_ok=True)
     
-    # Try to load piece images
-    images_loaded = load_piece_images()
-    if not images_loaded:
-        print("Chess piece images not found. Please download chess piece images and place them in the 'pieces' folder.")
-        print("The program will continue with text representation of pieces.")
+    print("Loading and creating chess piece images...")
+      # Create piece images with Unicode chess symbols
+    pieces = ['P', 'N', 'B', 'R', 'Q', 'K', 'p', 'n', 'b', 'r', 'q', 'k']
+    piece_symbols = {
+        'K': '♔', 'Q': '♕', 'R': '♖', 'B': '♗', 'N': '♘', 'P': '♙',
+        'k': '♚', 'q': '♛', 'r': '♜', 'b': '♝', 'n': '♞', 'p': '♟'
+    }
+    
+    for piece in pieces:
+        img_path = os.path.join("pieces", f"{piece}.png")
+        
+        # Try to load existing image first
+        if os.path.exists(img_path):
+            try:
+                img = pygame.image.load(img_path)
+                piece_images[piece] = pygame.transform.scale(img, (PIECE_SIZE, PIECE_SIZE))
+                print(f"Loaded image for {piece}")
+                continue
+            except Exception as e:
+                print(f"Error loading image for {piece}: {e}")
+        
+        # If loading fails or file doesn't exist, create a very simple image
+        print(f"Creating simple image for {piece}")
+        
+        # Create a simple colored circle with letter
+        is_white_piece = piece.isupper()
+        piece_color = BLACK if is_white_piece else WHITE
+        bg_color = WHITE if is_white_piece else BLACK
+        
+        # Create surface
+        surf = pygame.Surface((PIECE_SIZE, PIECE_SIZE), pygame.SRCALPHA)
+        surf.fill((0, 0, 0, 0))  # Transparent background
+        
+        # Draw circle
+        circle_radius = PIECE_SIZE // 2 - 2
+        pygame.draw.circle(surf, bg_color, (PIECE_SIZE // 2, PIECE_SIZE // 2), circle_radius)
+        pygame.draw.circle(surf, piece_color, (PIECE_SIZE // 2, PIECE_SIZE // 2), circle_radius, 2)
+          # Draw Unicode chess symbol
+        font_size = int(PIECE_SIZE * 0.7)
+        # Try several fonts for better Unicode symbol support
+        symbol = piece_symbols.get(piece, '?')
+        symbol_rendered = False
+        
+        for font_name in ['Arial Unicode MS', 'Segoe UI Symbol', 'DejaVu Sans', 'FreeSerif', 'Arial']:
+            try:
+                symbol_font = pygame.font.SysFont(font_name, font_size, bold=True)
+                text = symbol_font.render(symbol, True, piece_color)
+                if text.get_width() > 5:  # Check if symbol rendered properly
+                    text_rect = text.get_rect(center=(PIECE_SIZE // 2, PIECE_SIZE // 2))
+                    surf.blit(text, text_rect)
+                    symbol_rendered = True
+                    print(f"Successfully rendered {piece} with font {font_name}")
+                    break
+            except Exception as e:
+                print(f"Failed to render {piece} with font {font_name}: {e}")
+                continue
+                
+        # Fallback to letter if Unicode rendering failed
+        if not symbol_rendered:
+            print(f"Falling back to letter for {piece}")
+            font_size = int(PIECE_SIZE * 0.6)
+            letter_font = pygame.font.SysFont('Arial', font_size, bold=True)
+            text = letter_font.render(piece, True, piece_color)
+            text_rect = text.get_rect(center=(PIECE_SIZE // 2, PIECE_SIZE // 2))
+            surf.blit(text, text_rect)
+        
+        # Save the piece image
+        piece_images[piece] = surf
+        try:
+            pygame.image.save(surf, img_path)
+        except Exception as e:
+            print(f"Error saving image for {piece}: {e}")
     
     # Start the game
     gui = ChessGUI()
